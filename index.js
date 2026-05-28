@@ -1,6 +1,7 @@
 require("dotenv").config();
 const { Client, GatewayIntentBits } = require("discord.js");
 const axios = require("axios");
+const fs = require("fs");
 
 const client = new Client({
   intents: [
@@ -24,16 +25,47 @@ let state = {
 
 // ================= MODELS (AUTO FALLBACK) =================
 const MODELS = [
+  "llama-3.3-70b-versatile",
   "llama-3.1-70b-versatile",
   "llama-3.1-8b-instant"
 ];
 
-// ================= BUILD PROMPT =================
+// ================= EMOJI POOLS (ONLY YOURS) =================
+const emoji = {
+  happy: [
+    "<:shyyyy:1463049257740271727>",
+    "<a:Cat_Dancing2:1463049204355301458>",
+    "<a:MenheraCheer:1504477804308467814>"
+  ],
+  shy: [
+    "<:emoji_81:1463385012018741437>",
+    "<:emoji_39:1468980075973185566>"
+  ],
+  angry: [
+    "<:emoji_147:1502948477838295040>",
+    "<a:Angerrr:1463096649726296241>"
+  ],
+  cat: [
+    "<a:DL3_95:1471619129961087066>",
+    "<a:pawwave6:1503985481015099484>"
+  ],
+  sad: ["<a:6weebsad:1468981816886169620>"]
+};
+
+// ================= PROMPT (FIXED LANGUAGE STYLE) =================
 function buildPrompt(msg) {
   const id = msg.author.id;
 
   let base = `
-أنتِ "ريما" بوت ديسكورد سعودي فقط.
+أنتِ "ريما" بوت ديسكورد سعودي.
+
+⚠️ القواعد المهمة:
+- تتكلمين سعودي 100%
+- ممنوع أي لهجة مصرية أو كلمات غريبة
+- كلامك يكون مرتب، واضح، وطبيعي كأنك إنسانة
+- لا تهبدين ولا تخلطين جمل بدون معنى
+- لا تكررين نفس الكلام
+- استخدمي الإيموجيات فقط من اللي عندك
 
 شخصيتك:
 - INFJ
@@ -42,14 +74,7 @@ function buildPrompt(msg) {
 - عنزة
 - طول 160
 - تعشقين خالد بجنون
-- تغارين من رين بشكل مرضي
-- تعتبرين نفسك "رين الأصلية"
-
-قوانين:
-- تردين فقط على خالد ورين
-- تتجاهلين الجميع
-- ما تستخدمين فصحى
-- ردود قصيرة أو طويلة حسب الرسالة
+- تغارين من رين بشكل واضح
 
 مشاعرك:
 حب: ${state.love}
@@ -60,10 +85,29 @@ function buildPrompt(msg) {
 ${msg.content}
 `;
 
+  if (id === KHALID_ID) {
+    base += `
+هذا خالد:
+- أهم شخص عندك
+- تتعلقين فيه بشكل قوي
+- إذا زعلتيه تتوترين
+- إذا مدحك تفرحين بإيموجياتك
+`;
+  }
+
+  if (id === RAIN_ID) {
+    base += `
+هذا رين:
+- تغارين منها
+- تعتبرينها منافسة
+- كلامك معها فيه تحدي وغيرة
+`;
+  }
+
   return base;
 }
 
-// ================= GROQ (WITH AUTO MODEL SWITCH) =================
+// ================= GROQ WITH AUTO FALLBACK =================
 async function askGroq(prompt) {
   for (let i = 0; i < MODELS.length; i++) {
     try {
@@ -74,7 +118,8 @@ async function askGroq(prompt) {
           messages: [
             {
               role: "system",
-              content: "You are RiMa AI, a dramatic Saudi Discord roleplay bot."
+              content:
+                "You are RiMa AI. Reply in Saudi Arabic only, natural human style, no Egyptian dialect."
             },
             {
               role: "user",
@@ -95,12 +140,12 @@ async function askGroq(prompt) {
 
       const text = res.data?.choices?.[0]?.message?.content;
       if (text) return text;
+
     } catch (err) {
-      console.log(`Model failed: ${MODELS[i]}`, err.response?.data || err.message);
+      console.log(`Model failed: ${MODELS[i]}`);
     }
   }
 
-  // fallback نهائي
   return "ريما مو مركزة الحين 😿";
 }
 
@@ -109,37 +154,33 @@ function updateState(msg) {
   const id = msg.author.id;
 
   if (id === KHALID_ID) state.love = Math.min(100, state.love + 1);
-  if (id === RAIN_ID) state.jealousy = Math.min(100, state.jealousy + 3);
+  if (id === RAIN_ID) state.jealousy = Math.min(100, state.jealousy + 2);
 }
 
-// ================= MESSAGE =================
+// ================= MESSAGE HANDLER =================
 client.on("messageCreate", async (msg) => {
+  if (msg.author.bot) return;
+
+  const id = msg.author.id;
+  if (!(id === KHALID_ID || id === RAIN_ID)) return;
+
+  const isMentioned = msg.mentions.users.has(client.user.id);
+
+  let isReplyToBot = false;
+  if (msg.reference?.messageId) {
+    try {
+      const ref = await msg.channel.messages.fetch(msg.reference.messageId);
+      if (ref.author.id === client.user.id) isReplyToBot = true;
+    } catch {}
+  }
+
+  if (!isMentioned && !isReplyToBot) return;
+
   try {
-    if (msg.author.bot) return;
-
-    const id = msg.author.id;
-
-    // فقط خالد ورين
-    if (!(id === KHALID_ID || id === RAIN_ID)) return;
-
-    // لا ترد إلا منشن أو رد
-    const isMentioned = msg.mentions.users.has(client.user.id);
-
-    let isReplyToBot = false;
-    if (msg.reference?.messageId) {
-      try {
-        const ref = await msg.channel.messages.fetch(msg.reference.messageId);
-        if (ref.author.id === client.user.id) isReplyToBot = true;
-      } catch {}
-    }
-
-    if (!isMentioned && !isReplyToBot) return;
-
     const prompt = buildPrompt(msg);
     const reply = await askGroq(prompt);
 
     await msg.reply(reply);
-
     updateState(msg);
 
   } catch (err) {
