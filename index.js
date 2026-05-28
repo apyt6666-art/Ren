@@ -12,7 +12,7 @@ const client = new Client({
 
 // ================= IDS =================
 const KHALID_ID = "1014538783200378951";
-const RAIN_ID = "1422918463034228757";
+const RAIN_ID = "1071847860389290014";
 
 // ================= EMOJIS =================
 const emoji = {
