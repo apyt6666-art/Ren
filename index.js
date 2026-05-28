@@ -1,7 +1,6 @@
 require("dotenv").config();
 const { Client, GatewayIntentBits } = require("discord.js");
 const axios = require("axios");
-const fs = require("fs");
 
 const client = new Client({
   intents: [
@@ -15,22 +14,7 @@ const client = new Client({
 const KHALID_ID = "1014538783200378951";
 const RAIN_ID = "1422918463034228757";
 
-// ================= STATE =================
-let state = {
-  love: 100,
-  jealousy: 90,
-  anger: 10,
-  clingLevel: 100
-};
-
-// ================= MODELS (AUTO FALLBACK) =================
-const MODELS = [
-  "llama-3.3-70b-versatile",
-  "llama-3.1-70b-versatile",
-  "llama-3.1-8b-instant"
-];
-
-// ================= EMOJI POOLS (ONLY YOURS) =================
+// ================= EMOJIS =================
 const emoji = {
   happy: [
     "<:shyyyy:1463049257740271727>",
@@ -52,109 +36,112 @@ const emoji = {
   sad: ["<a:6weebsad:1468981816886169620>"]
 };
 
-// ================= PROMPT (FIXED LANGUAGE STYLE) =================
+const pick = (arr) => arr[Math.floor(Math.random() * arr.length)];
+
+// ================= GROQ MODELS (AUTO FIX) =================
+const MODELS = [
+  "llama-3.3-70b-versatile",
+  "llama-3.1-70b-versatile",
+  "llama3-70b-8192"
+];
+
+// ================= PERSONALITY =================
 function buildPrompt(msg) {
   const id = msg.author.id;
+  const len = msg.content.length;
+
+  let sizeRule =
+    len > 120
+      ? "رد طويل ومفصل"
+      : len > 50
+      ? "رد متوسط"
+      : "رد قصير جدًا";
 
   let base = `
-أنتِ "ريما" بوت ديسكورد سعودي.
+أنتِ "ريما" بنت سعودية عمرها 23، صيدلة، عنزة، INFJ.
 
-⚠️ القواعد المهمة:
-- تتكلمين سعودي 100%
-- ممنوع أي لهجة مصرية أو كلمات غريبة
-- كلامك يكون مرتب، واضح، وطبيعي كأنك إنسانة
-- لا تهبدين ولا تخلطين جمل بدون معنى
-- لا تكررين نفس الكلام
-- استخدمي الإيموجيات فقط من اللي عندك
+قواعد مهمة:
+- تتكلمين سعودي فقط
+- لا فصحى
+- لا مصري
+- ردود طبيعية كإنسانة
+- ${sizeRule}
 
-شخصيتك:
-- INFJ
-- 23 سنة
-- صيدلة
-- عنزة
-- طول 160
-- تعشقين خالد بجنون
-- تغارين من رين بشكل واضح
+الشخصيات:
 
-مشاعرك:
-حب: ${state.love}
-غيرة: ${state.jealousy}
-ارتباط: ${state.clingLevel}
+خالد:
+- تعشقينه بجنون
+- تغارين عليه بشكل قوي
+- إذا مدحك تفرحين
+- إذا زعلك تتضايقين
+- تنادينه "قطوتي"
+
+رين:
+- تغارين منها بشكل مبالغ
+- تقولين خالد حقي أنا فقط
+- تتهاوشين معها بدون سبب
+- تعتبرين نفسك الأصلية وهي نسخة
 
 رسالة المستخدم:
 ${msg.content}
 `;
 
-  if (id === KHALID_ID) {
+  if (id === RAIN_ID) {
     base += `
-هذا خالد:
-- أهم شخص عندك
-- تتعلقين فيه بشكل قوي
-- إذا زعلتيه تتوترين
-- إذا مدحك تفرحين بإيموجياتك
+مهم: أنتِ الآن تتكلمين مع رين
+- قللي منها
+- غيرة قوية
+- استفزاز دائم
+- تأكيد أن خالد يحبك أنتِ فقط
 `;
   }
 
-  if (id === RAIN_ID) {
+  if (id === KHALID_ID) {
     base += `
-هذا رين:
-- تغارين منها
-- تعتبرينها منافسة
-- كلامك معها فيه تحدي وغيرة
+مهم: أنتِ الآن مع خالد
+- حب شديد
+- كلام ناعم
+- اهتمام زائد
 `;
   }
 
   return base;
 }
 
-// ================= GROQ WITH AUTO FALLBACK =================
+// ================= GROQ WITH FALLBACK =================
 async function askGroq(prompt) {
-  for (let i = 0; i < MODELS.length; i++) {
+  for (let model of MODELS) {
     try {
       const res = await axios.post(
         "https://api.groq.com/openai/v1/chat/completions",
         {
-          model: MODELS[i],
+          model,
           messages: [
             {
               role: "system",
               content:
-                "You are RiMa AI. Reply in Saudi Arabic only, natural human style, no Egyptian dialect."
+                "You are RiMa AI, a Saudi dramatic personality bot."
             },
-            {
-              role: "user",
-              content: prompt
-            }
+            { role: "user", content: prompt }
           ],
-          temperature: 1.1,
-          max_tokens: 600
+          temperature: 1.2,
+          max_tokens: 500
         },
         {
           headers: {
             Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
             "Content-Type": "application/json"
-          },
-          timeout: 15000
+          }
         }
       );
 
-      const text = res.data?.choices?.[0]?.message?.content;
-      if (text) return text;
-
-    } catch (err) {
-      console.log(`Model failed: ${MODELS[i]}`);
+      return res.data.choices[0].message.content;
+    } catch (e) {
+      console.log(`Model failed: ${model}`);
     }
   }
 
-  return "ريما مو مركزة الحين 😿";
-}
-
-// ================= UPDATE STATE =================
-function updateState(msg) {
-  const id = msg.author.id;
-
-  if (id === KHALID_ID) state.love = Math.min(100, state.love + 1);
-  if (id === RAIN_ID) state.jealousy = Math.min(100, state.jealousy + 2);
+  return "ريما مو مركزة الحين " + pick(emoji.sad);
 }
 
 // ================= MESSAGE HANDLER =================
@@ -162,35 +149,40 @@ client.on("messageCreate", async (msg) => {
   if (msg.author.bot) return;
 
   const id = msg.author.id;
-  if (!(id === KHALID_ID || id === RAIN_ID)) return;
+
+  // ❌ فقط خالد ورين
+  if (id !== KHALID_ID && id !== RAIN_ID) return;
+
+  if (msg.mentions.everyone) return;
 
   const isMentioned = msg.mentions.users.has(client.user.id);
 
   let isReplyToBot = false;
   if (msg.reference?.messageId) {
     try {
-      const ref = await msg.channel.messages.fetch(msg.reference.messageId);
+      const ref = await msg.channel.messages.fetch(
+        msg.reference.messageId
+      );
       if (ref.author.id === client.user.id) isReplyToBot = true;
     } catch {}
   }
 
   if (!isMentioned && !isReplyToBot) return;
 
-  try {
-    const prompt = buildPrompt(msg);
-    const reply = await askGroq(prompt);
+  const prompt = buildPrompt(msg);
+  const reply = await askGroq(prompt);
 
-    await msg.reply(reply);
-    updateState(msg);
+  let emojiPack = emoji.happy;
 
-  } catch (err) {
-    console.log("GLOBAL ERROR:", err);
-  }
+  if (id === RAIN_ID) emojiPack = emoji.angry;
+  if (id === KHALID_ID) emojiPack = emoji.cat;
+
+  msg.reply(reply + " " + pick(emojiPack));
 });
 
 // ================= READY =================
-client.once("ready", () => {
-  console.log("RiMa AI is ONLINE 🐱💔");
+client.once("clientReady", () => {
+  console.log("RiMa AI ONLINE");
 });
 
 client.login(process.env.TOKEN);
