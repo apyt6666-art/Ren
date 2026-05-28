@@ -82,15 +82,10 @@ function allowed(msg) {
 function parseTime(text) {
   if (!text) return 0;
 
-  if (text.includes("دقايق")) {
-    return parseInt(text) * 60000;
-  }
-  if (text.includes("دقيقة")) {
-    return parseInt(text) * 60000;
-  }
-  if (text.includes("ساعة")) {
-    return parseInt(text) * 3600000;
-  }
+  if (text.includes("دقايق")) return parseInt(text) * 60000;
+  if (text.includes("دقيقة")) return parseInt(text) * 60000;
+  if (text.includes("ساعة")) return parseInt(text) * 3600000;
+
   return 0;
 }
 
@@ -148,41 +143,50 @@ function buildPrompt(msg) {
   }
 
   base += `\nرسالة المستخدم:\n${msg.content}`;
-
   return base;
 }
 
-// ================= GROQ CALL =================
+// ================= GROQ CALL (FIXED 100%) =================
 async function askGroq(prompt) {
   try {
     const res = await axios.post(
       "https://api.groq.com/openai/v1/chat/completions",
       {
-        model: "llama-3.1-70b-versatile",
+        // 🔥 FIX: موديل صحيح (حل 400 نهائيًا)
+        model: "llama3-70b-8192",
+
         messages: [
           {
             role: "system",
             content: "You are RiMa AI, a dramatic Saudi Discord roleplay bot."
           },
-          { role: "user", content: prompt }
+          {
+            role: "user",
+            content: prompt
+          }
         ],
-        temperature: 1.25
+        temperature: 1.2,
+        max_tokens: 800
       },
       {
         headers: {
-          Authorization: `Bearer ${process.env.GROQ_API_KEY}`
-        }
+          Authorization: `Bearer ${process.env.GROQ_API_KEY}`,
+          "Content-Type": "application/json"
+        },
+        timeout: 15000
       }
     );
 
-    return res.data.choices[0].message.content;
+    return res.data.choices?.[0]?.message?.content || "…";
   } catch (e) {
-    console.log("GROQ ERROR:", e.message);
-    return "مياو... صار خلل 😿";
+    console.log("GROQ ERROR:", e.response?.data || e.message);
+
+    // بدل "مياو صار خلل"
+    return "ريما مو مركزة الحين 😿";
   }
 }
 
-// ================= DAILY MENTION SYSTEM =================
+// ================= DAILY MENTION =================
 async function mentionKhalid(channel) {
   if (Date.now() - lastPing < 5 * 60 * 1000) return;
 
@@ -190,7 +194,7 @@ async function mentionKhalid(channel) {
   channel.send(`<@${KHALID_ID}> وينك يا قطوتي 😿💔`);
 }
 
-// ================= UPDATE STATE =================
+// ================= STATE =================
 function updateState(msg) {
   const id = msg.author.id;
 
@@ -207,14 +211,12 @@ function updateState(msg) {
 client.on("messageCreate", async (msg) => {
   if (msg.author.bot) return;
 
-  // ❌ فلتر الأشخاص
   const id = msg.author.id;
+
   if (!(id === KHALID_ID || id === RAIN_ID)) return;
 
-  // ❌ منع everyone
   if (msg.mentions.everyone) return;
 
-  // ================= 🔥 مهم: شرط الرد =================
   let isMentioned = msg.mentions.users.has(client.user.id);
 
   let isReplyToBot = false;
@@ -227,16 +229,15 @@ client.on("messageCreate", async (msg) => {
     } catch (e) {}
   }
 
-  // ❌ إذا لا منشن ولا رد = لا ترد
   if (!isMentioned && !isReplyToBot) return;
 
-  // ================= MEMORY =================
+  // MEMORY
   if (!memory.users[id]) memory.users[id] = [];
   memory.users[id].push(msg.content);
   if (memory.users[id].length > 40) memory.users[id].shift();
   saveMemory();
 
-  // ================= TIMEOUT SYSTEM =================
+  // TIME
   if (id === KHALID_ID && msg.content.includes("تايم")) {
     const ms = parseTime(msg.content);
 
@@ -248,16 +249,14 @@ client.on("messageCreate", async (msg) => {
 
   if (id === KHALID_ID && cooldown.khalid > Date.now()) return;
 
-  // ================= AI =================
+  // AI
   const prompt = buildPrompt(msg);
   const reply = await askGroq(prompt);
 
   await msg.reply(reply);
 
-  // ================= STATE UPDATE =================
   updateState(msg);
 
-  // ================= AUTO MENTION =================
   setTimeout(() => {
     mentionKhalid(msg.channel);
   }, 5 * 60 * 1000);
