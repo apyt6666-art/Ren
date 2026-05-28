@@ -206,11 +206,31 @@ function updateState(msg) {
 // ================= MESSAGE HANDLER =================
 client.on("messageCreate", async (msg) => {
   if (msg.author.bot) return;
-  if (!allowed(msg)) return;
 
+  // ❌ فلتر الأشخاص
   const id = msg.author.id;
+  if (!(id === KHALID_ID || id === RAIN_ID)) return;
 
-  // memory init
+  // ❌ منع everyone
+  if (msg.mentions.everyone) return;
+
+  // ================= 🔥 مهم: شرط الرد =================
+  let isMentioned = msg.mentions.users.has(client.user.id);
+
+  let isReplyToBot = false;
+  if (msg.reference?.messageId) {
+    try {
+      const refMsg = await msg.channel.messages.fetch(msg.reference.messageId);
+      if (refMsg.author.id === client.user.id) {
+        isReplyToBot = true;
+      }
+    } catch (e) {}
+  }
+
+  // ❌ إذا لا منشن ولا رد = لا ترد
+  if (!isMentioned && !isReplyToBot) return;
+
+  // ================= MEMORY =================
   if (!memory.users[id]) memory.users[id] = [];
   memory.users[id].push(msg.content);
   if (memory.users[id].length > 40) memory.users[id].shift();
