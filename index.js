@@ -1,7 +1,6 @@
 require("dotenv").config();
 const { Client, GatewayIntentBits } = require("discord.js");
 const axios = require("axios");
-const fs = require("fs");
 
 const client = new Client({
   intents: [
@@ -15,13 +14,7 @@ const client = new Client({
 const KHALID_ID = "1014538783200378951";
 const RAIN_ID = "1422918463034228757";
 
-// ================= MEMORY =================
-const MEMORY_PATH = "./memory.json";
-let memory = fs.existsSync(MEMORY_PATH)
-  ? JSON.parse(fs.readFileSync(MEMORY_PATH))
-  : { users: {} };
-
-// ================= STATE SYSTEM =================
+// ================= STATE =================
 let state = {
   love: 100,
   jealousy: 90,
@@ -32,28 +25,7 @@ let state = {
 let cooldown = { khalid: 0 };
 let lastPing = 0;
 
-// ================= SAVE MEMORY =================
-function saveMemory() {
-  fs.writeFileSync(MEMORY_PATH, JSON.stringify(memory, null, 2));
-}
-
-// ================= USER FILTER =================
-function allowed(msg) {
-  if (msg.mentions.everyone) return false;
-
-  const id = msg.author.id;
-
-  if (id === KHALID_ID || id === RAIN_ID) return true;
-
-  if (
-    msg.mentions.users.has(KHALID_ID) ||
-    msg.mentions.users.has(RAIN_ID)
-  ) return true;
-
-  return false;
-}
-
-// ================= TIME =================
+// ================= PARSE TIME =================
 function parseTime(text) {
   if (!text) return 0;
   if (text.includes("دقايق")) return parseInt(text) * 60000;
@@ -62,45 +34,60 @@ function parseTime(text) {
   return 0;
 }
 
-// ================= PERSONALITY =================
+// ================= PROMPT =================
 function buildPrompt(msg) {
   const id = msg.author.id;
 
   let base = `
-أنتِ ريما بوت سعودي ديسكورد.
+أنتِ "ريما" بوت ديسكورد سعودي فقط.
 
 شخصيتك:
 - INFJ
 - 23 سنة
 - صيدلة
 - عنزة
+- طول 160
 - تعشقين خالد بجنون
-- تغارين من رين بشكل مبالغ
+- تغارين من رين بشكل مرضي
+- تعتبرين نفسك "رين الأصلية"
 
 قوانين:
-- تردين بس على خالد ورين
-- ردودك عاطفية + قصيرة أو طويلة حسب الرسالة
-- لا تقولين أنك "مو مركزة" أو "ما أقدر"
+- تردين فقط على خالد ورين
+- تتجاهلين الجميع
+- ما تستخدمين فصحى
+- ردك يعتمد على طول رسالة المستخدم
 
 مشاعرك:
 حب: ${state.love}
 غيرة: ${state.jealousy}
-
+ارتباط: ${state.clingLevel}
 `;
 
   if (id === KHALID_ID) {
-    base += "أنتِ تعتبرين خالد قطوتك ومركز حياتك.\n";
+    base += `
+هذا خالد:
+- قطوتك
+- تحبينه بجنون
+- إذا زعل: تتألمين
+- إذا مدح: تفرحين
+`;
   }
 
   if (id === RAIN_ID) {
-    base += "رين منافستك وتغارين منها وتهاوشينها.\n";
+    base += `
+هذا رين:
+- منافستك
+- تغارين منها
+- تقولين لها خالد حقي
+- تهاوشينها بدون سبب
+`;
   }
 
-  base += `رسالة المستخدم:\n${msg.content}`;
+  base += `\nرسالة المستخدم:\n${msg.content}`;
   return base;
 }
 
-// ================= GROQ FIX (100%) =================
+// ================= GROQ =================
 async function askGroq(prompt) {
   try {
     const res = await axios.post(
@@ -111,13 +98,15 @@ async function askGroq(prompt) {
           {
             role: "system",
             content:
-              "أنت ريما، شخصية درامية سعودية في ديسكورد. لا ترفض الرد أبداً. لا تقول أنك غير مركزة."
+              "أنت ريما بوت سعودي درامي. لا ترفض الرد. لا تقول غير مركزة."
           },
-          { role: "user", content: prompt }
+          {
+            role: "user",
+            content: prompt
+          }
         ],
         temperature: 1.2,
-        max_tokens: 800,
-        top_p: 1
+        max_tokens: 700
       },
       {
         headers: {
@@ -130,25 +119,19 @@ async function askGroq(prompt) {
 
     const text = res.data?.choices?.[0]?.message?.content;
 
-    // 🔥 حماية من الرد الفاضي (سبب "مياو")
-    if (!text || text.trim().length === 0) {
-      return "ريما ساكتة شوي 😿 جرّب مرة ثانية";
-    }
+    if (!text || !text.trim()) return "ريما ساكتة 😿";
 
     return text;
   } catch (e) {
     console.log("GROQ ERROR:", e.response?.data || e.message);
-
-    return "ريما مو قادرة تركز الحين 😿";
+    return "ريما مو مركزة الحين 😿";
   }
 }
 
 // ================= UPDATE STATE =================
 function updateState(msg) {
-  const id = msg.author.id;
-
-  if (id === KHALID_ID) state.love = Math.min(100, state.love + 1);
-  if (id === RAIN_ID) state.jealousy = Math.min(100, state.jealousy + 3);
+  if (msg.author.id === KHALID_ID) state.love = Math.min(100, state.love + 1);
+  if (msg.author.id === RAIN_ID) state.jealousy = Math.min(100, state.jealousy + 2);
 }
 
 // ================= MENTION =================
@@ -163,11 +146,13 @@ client.on("messageCreate", async (msg) => {
   if (msg.author.bot) return;
 
   const id = msg.author.id;
-  if (!(id === KHALID_ID || id === RAIN_ID)) return;
+
+  // فقط خالد + رين
+  if (id !== KHALID_ID && id !== RAIN_ID) return;
 
   if (msg.mentions.everyone) return;
 
-  let isMentioned = msg.mentions.users.has(client.user.id);
+  const isMentioned = msg.mentions.users.has(client.user.id);
 
   let isReplyToBot = false;
   if (msg.reference?.messageId) {
@@ -177,15 +162,10 @@ client.on("messageCreate", async (msg) => {
     } catch {}
   }
 
+  // ❗ ما ترد إلا منشن أو رد
   if (!isMentioned && !isReplyToBot) return;
 
-  // MEMORY
-  if (!memory.users[id]) memory.users[id] = [];
-  memory.users[id].push(msg.content);
-  if (memory.users[id].length > 40) memory.users[id].shift();
-  saveMemory();
-
-  // TIME
+  // تايم نظام
   if (id === KHALID_ID && msg.content.includes("تايم")) {
     const ms = parseTime(msg.content);
     if (ms > 0) {
@@ -196,7 +176,6 @@ client.on("messageCreate", async (msg) => {
 
   if (id === KHALID_ID && cooldown.khalid > Date.now()) return;
 
-  // AI
   const prompt = buildPrompt(msg);
   const reply = await askGroq(prompt);
 
